@@ -3,7 +3,8 @@ name: Build WHISLIST HASIM APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -16,13 +17,20 @@ jobs:
       - name: Extract project ZIP
         run: |
           ZIP_FILE="$(find . -maxdepth 1 -type f -name '*.zip' -print -quit)"
-          test -n "$ZIP_FILE" || { echo "Project ZIP missing from repository root"; exit 1; }
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP proyek tidak ditemukan di root repository."
+            exit 1
+          fi
 
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
           PROJECT_DIR="$(find extracted -mindepth 1 -maxdepth 3 -type d -name 'WHISLIST_HASIM_AndroidStudio' -print -quit)"
-          test -n "$PROJECT_DIR" || { echo "Project folder not found in ZIP"; find extracted -maxdepth 4; exit 1; }
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Folder WHISLIST_HASIM_AndroidStudio tidak ditemukan di dalam ZIP."
+            find extracted -maxdepth 4
+            exit 1
+          fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
@@ -30,23 +38,32 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager tidak ditemukan di Android SDK."
+            find "$ANDROID_SDK_ROOT" -maxdepth 5 -type f -name sdkmanager
+            exit 1
+          fi
+
+          echo "sdkmanager ditemukan: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: "8.9"
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: WHISLIST-HASIM-APK
